@@ -1,15 +1,13 @@
 
 #include "Client.hpp"
 
-#include <iostream>
 #include <cstdlib>
 #include <fstream>
-
+#include <iostream>
 
 namespace fs = std::filesystem;
 
-
-void loadRootCertificate(boost::asio::ssl::context& ctx, fs::path const &certificate) {
+void loadRootCertificate(boost::asio::ssl::context &ctx, fs::path const &certificate) {
     if (!fs::exists(certificate) || !fs::is_regular_file(certificate)) {
         throw std::runtime_error(
             std::format("Invalid server certificate [{}]", certificate.string()));
@@ -19,8 +17,8 @@ void loadRootCertificate(boost::asio::ssl::context& ctx, fs::path const &certifi
                                  std::istreambuf_iterator<char>()};
 
         boost::system::error_code ec;
-        ctx.add_certificate_authority(
-            boost::asio::buffer(certContents.data(), certContents.size()), ec);
+        ctx.add_certificate_authority(boost::asio::buffer(certContents.data(), certContents.size()),
+                                      ec);
         if (ec) {
             throw std::runtime_error(
                 std::format("Unable to obtain the certificate authority from the "
@@ -43,13 +41,12 @@ int main() {
     try {
         loadRootCertificate(sslContext, sslServerCertificate.string());
 
-    } catch (std::exception const& ex) {
+    } catch (std::exception const &ex) {
         std::cerr << "FATAL: cannot start the client: " << ex.what() << std::endl;
         return EXIT_FAILURE;
     }
-    auto const port = std::to_string(nt::defs::ws::kPort);
 
-    std::make_shared<nt::Client>(ioContext, sslContext)->run("localhost", port);
+    std::make_shared<nt::Client>(ioContext, sslContext)->run("localhost", nt::defs::ws::kPort);
 
     // Run the I/O service. The call will return when the socket is closed.
     ioContext.run();
