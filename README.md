@@ -9,6 +9,14 @@ This is a simple client-server that uses WebSockets over SSL connection.
 
 ## How To Build (Linux)
 - Install Boost development libraries in your system
+    - Download the library from [HERE](https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.bz2) or go to their page [HERE](https://www.boost.org/users/download/)
+    - Example:
+```shell
+tar xjf boost_1_84_0.tar.bz2
+cd boost_1_84_0
+./bootstrap.sh --prefix=/usr/local
+sudo ./b2 link=static install 
+```
 - Use CMake to configure the project from the root tree
 
 ## How to Run
