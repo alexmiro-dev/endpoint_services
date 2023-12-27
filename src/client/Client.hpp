@@ -19,8 +19,6 @@
 #include <memory>
 #include <string>
 
-// The base code for a Original code from:
-
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
 namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
@@ -59,7 +57,7 @@ public:
 
     // Start the asynchronous operation
     void run(std::string_view host, int port) {
-        host_ = host;
+        host_ = host.data();
         port_ = port;
         auto const strPort = std::to_string(port);
 
@@ -68,6 +66,7 @@ public:
                                 beast::bind_front_handler(&Client::onResolve, shared_from_this()));
     }
 
+private:
     void onResolve(beast::error_code ec, tcp::resolver::results_type results) {
         if (ec) {
             return fail(ec, "resolve");
@@ -119,91 +118,99 @@ public:
         if (ec) {
             return fail(ec, "handshake");
         }
-        ws_.async_write(net::buffer(getMessageVersion()),
-                        beast::bind_front_handler(&Client::onWrite, shared_from_this()));
+        wsInteractionThr_ = std::jthread([&](std::stop_token stopToken) { mainLoop(stopToken); });
+        wsInteractionThr_.join();
     }
 
-    void onWrite(beast::error_code ec, std::size_t bytes_transferred) {
-        boost::ignore_unused(bytes_transferred);
+    void mainLoop(std::stop_token stopToken) {
+        beast::flat_buffer b;
 
-        if (ec) {
-            return fail(ec, "write");
-        }
-        // Read a message into our buffer
-        ws_.async_read(buffer_, beast::bind_front_handler(&Client::onRead, shared_from_this()));
-    }
+        auto const strPort = std::to_string(port_);
 
-    void onRead(beast::error_code ec, std::size_t bytes_transferred) {
-        boost::ignore_unused(bytes_transferred);
-
-        if (ec) {
-            return fail(ec, "read");
-        }
-        std::string strBuffer{boost::asio::buffer_cast<char const *>(buffer_.data()),
-                              buffer_.size()};
-
-        // ...............................................................
-        // Get the message received from the server then try to process it
-        // ...............................................................
-        try {
-            nlohmann::json const dataJson = nlohmann::json::parse(strBuffer);
-            auto message = proto::toMessage(dataJson);
-
-            if (auto const response = messageHandler_.process(std::move(message)); response) {
-                ws_.async_write(net::buffer(proto::toString(response.value())),
-                                beast::bind_front_handler(&Client::onWrite, shared_from_this()));
+        while (!stopToken.stop_requested()) {
+            if (!cmdLineIface_.tryToExecuteAction(version_.value.to_string(), host_, strPort)) {
+                // User has chosen to quit the application.
+                break;
             }
-        } catch (nlohmann::json::exception const &ex) {
-            // TODO: log the error but do nothing. The server should not send any malformed message.
+            ws_.read(b);
+            try {
+                nlohmann::json const dataJson =
+                    nlohmann::json::parse(beast::buffers_to_string(b.data()));
+                b.clear();
+                auto received = proto::toMessage(dataJson);
+
+                if (auto const response = messageHandler_.process(std::move(received)); response) {
+                    ws_.write(net::buffer(proto::toString(response.value())));
+                }
+            } catch (nlohmann::json::exception const &ex) {
+                // TODO: log the error but do nothing. The server should not send any malformed
+                // message.
+            }
         }
-        // Close the WebSocket connection
-        //        ws_.async_close(websocket::close_code::normal,
-        //                        beast::bind_front_handler(&Client::onClose, shared_from_this()));
-    }
-
-    void onClose(beast::error_code ec) {
-        if (ec) {
-            return fail(ec, "close");
-        }
-        // If we get here then the connection is closed gracefully
-
-        // The make_printable() function helps print a ConstBufferSequence
-        std::cout << beast::make_printable(buffer_.data()) << std::endl;
-    }
-
-private:
-    std::string getMessageVersion() const {
-        nlohmann::json data = nlohmann::json::object();
-        data[proto::keys::kVersion] = version_.value.to_string();
-
-        proto::Message msg{.type = proto::MessageType::Version, .payload = data};
-        return proto::toString(msg);
     }
 
     void init() {
         cmdLineIface_
-            .title(std::format("[MENU] Client (v{}) connected to {}:{}", version_.value.to_string(),
-                               host_, port_))
-            .option({.label = "Get updates", .action = [&] { requestUpdates(); }});
+            .option(
+                {.label = "Check the server version", .action = [&] { requestServerVersion(); }})
+            .option({.label = "Get updates", .action = [&] { requestUpdates(); }})
+            .option({.label = "Push settings changes", .action = [&] { requestPushSettings(); }});
 
         messageHandler_
             .onVersionUpdatesAvailable([&](proto::Message &&message) {
                 auto const strVersion = message.payload[proto::keys::kVersion].get<std::string>();
                 std::cout << "\n\n**Attention** A new version is available: " << strVersion << "\n";
-                cmdLineIface_.tryToExecuteAction();
                 return std::nullopt;
             })
             .onUpdates([&](proto::Message &&message) {
-                cmdLineIface_.tryToExecuteAction();
+                // Should check better if the metrics we are receiving are valid but let's trust in
+                // our server to make things easier
+                metrics_.clear();
+
+                auto const strVersion = message.payload[proto::keys::kVersion].get<std::string>();
+                version_.value = semver::version{strVersion};
+
+                for (auto &&m : message.payload[proto::keys::kMetrics]) {
+                    proto::Metric metric = m;
+                    metrics_.emplace(std::make_pair(metric.name, std::move(metric)));
+                }
+                std::cout << "\n\nThe metrics has been updated\n\n";
+                return std::nullopt;
+            })
+            .onDeprecated([&](proto::Message &&message) {
+                auto const strError = message.payload[proto::keys::kError].get<std::string>();
+                std::cout << std::format("\n\n(ERROR) {}  <Update your version!>\n\n", strError);
+                return std::nullopt;
+            })
+            .onAccepted([&](proto::Message &&message) {
+                std::cout << "\n\nYour last request was accepted!\n\n";
                 return std::nullopt;
             });
     }
 
+    void requestServerVersion() {
+        nlohmann::json data = nlohmann::json::object();
+        data[proto::keys::kVersion] = version_.value.to_string();
+
+        proto::Message request{.type = proto::MessageType::Version, .payload = data};
+        ws_.write(net::buffer(proto::toString(request)));
+    }
+
     void requestUpdates() {
         proto::Message request{.type = proto::MessageType::GetUpdates};
+        ws_.write(net::buffer(proto::toString(request)));
+    }
 
-        ws_.async_write(net::buffer(proto::toString(request)),
-                        beast::bind_front_handler(&Client::onWrite, shared_from_this()));
+    void requestPushSettings() {
+        proto::Message request{.type = proto::MessageType::PushSettings};
+        nlohmann::json metricsArray = nlohmann::json::array();
+
+        for (auto &&[k, m] : metrics_) {
+            metricsArray.push_back(m);
+        }
+        request.payload[proto::keys::kMetrics] = metricsArray;
+        request.payload[proto::keys::kVersion] = version_.value.to_string();
+        ws_.write(net::buffer(proto::toString(request)));
     }
 
     proto::Version version_;
@@ -212,6 +219,7 @@ private:
     beast::flat_buffer buffer_;
     proto::MessageHandler messageHandler_;
     CommandLineInterface cmdLineIface_;
+    std::jthread wsInteractionThr_;
     proto::metrics_umap_t metrics_ = proto::kMetricsDefault;
     std::string host_;
     int port_;

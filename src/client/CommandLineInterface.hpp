@@ -17,33 +17,28 @@ struct Option {
     action_func_t action;
 };
 
-using endl_t = std::ostream &(*)(std::ostream &);
-
 /**
  * Naive implementation for a CLI
  */
 class CommandLineInterface {
 public:
-    CommandLineInterface &title(std::string_view title) {
-        title_ = title;
-        return *this;
-    }
-
     CommandLineInterface &option(Option &&opt) {
         options_.emplace_back(std::move(opt));
         return *this;
     }
 
-    void tryToExecuteAction() const {
+    bool tryToExecuteAction(std::string_view version, std::string_view host, std::string_view port) const {
         std::string choiceStr;
 
         while (true) {
-            std::cout << n_ << n_ << title_ << n_;
+            std::cout << std::string{std::format("\n\n[MENU] Client (v{}) connected to {}:{}\n",
+                                                 version, host, port)}
+                      << std::flush;
 
             for (auto i = 0; i < options_.size(); ++i) {
-                std::cout << std::format("   {}. {}", i + 1, options_[i].label) << n_;
+                std::cout << std::format("   {}. {}", i + 1, options_[i].label) << "\n";
             }
-            std::cout << n_ << "Enter your choice (0 to quit/reload): ";
+            std::cout << "\nEnter your choice (0 to disconnect and quit): ";
 
             std::getline(std::cin, choiceStr);
 
@@ -52,9 +47,10 @@ public:
                     throw std::invalid_argument{""};
                 } else {
                     if (choiceInt == 0) {
-                        break;
+                        return false;
                     }
                     options_[choiceInt - 1].action();
+                    return true;
                 }
             } catch ([[maybe_unused]] std::invalid_argument const &ex) {
                 std::cerr << "\nERROR: Invalid option!\n\n";
@@ -64,16 +60,10 @@ public:
         }
     }
 
-    void leaveMenu() const {
-        std::istringstream fakeInput{std::to_string(0)};
-        std::cin.rdbuf(fakeInput.rdbuf());
-    }
-
 private:
     std::vector<Option> options_;
-    std::string title_;
-    endl_t n_ = std::endl;
-    char tab_ = '\t';
+    std::string host_;
+    std::string port_;
 };
 
 } // namespace nt

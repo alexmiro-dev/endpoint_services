@@ -2,7 +2,6 @@
 #include "Client.hpp"
 
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 
 namespace fs = std::filesystem;
@@ -32,7 +31,6 @@ void loadRootCertificate(boost::asio::ssl::context &ctx, fs::path const &certifi
 }
 
 int main() {
-
     fs::path const sslServerCertificate = fs::current_path() / nt::defs::ws::kServerCertificate;
 
     boost::asio::io_context ioContext;
@@ -45,7 +43,6 @@ int main() {
         std::cerr << "FATAL: cannot start the client: " << ex.what() << std::endl;
         return EXIT_FAILURE;
     }
-
     std::make_shared<nt::Client>(ioContext, sslContext)->run("localhost", nt::defs::ws::kPort);
 
     // Run the I/O service. The call will return when the socket is closed.

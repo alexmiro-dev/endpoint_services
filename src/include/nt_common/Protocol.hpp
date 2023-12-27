@@ -53,6 +53,7 @@ static constexpr std::string_view kType = "type";
 static constexpr std::string_view kPayload = "payload";
 static constexpr std::string_view kVersion = "version";
 static constexpr std::string_view kMetrics = "metrics";
+static constexpr std::string_view kError = "error";
 static constexpr std::string kAvailability = "availability";
 static constexpr std::string kPerformance = "performance";
 } // namespace keys
@@ -113,7 +114,7 @@ inline std::string toString(Message const &m) {
 using handle_func_t = std::function<std::optional<Message>(Message &&)>;
 
 /**
- *
+ * A value based handler
  */
 class MessageHandler {
 public:
@@ -156,6 +157,11 @@ public:
 
     self_t &onPushSettings(handle_func_t f) {
         handlers_.insert(std::make_pair(MessageType::PushSettings, f));
+        return *this;
+    }
+
+    self_t &onDeprecated(handle_func_t f) {
+        handlers_.insert(std::make_pair(MessageType::Deprecated, f));
         return *this;
     }
 

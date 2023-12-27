@@ -4,10 +4,11 @@
 
 #include <crow.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
-#include <iostream> // TODO delete this line
+#include <iostream> // TODO delete this line once we have a logger
 #include <latch>
 #include <mutex>
 #include <thread>
@@ -39,6 +40,7 @@ public:
                     std::lock_guard<std::mutex> _{connectionsMtx_};
                     if (!isBinary) {
                         try {
+                            std::cout << "Received: " << data << std::endl;
                             nlohmann::json const dataJson = nlohmann::json::parse(data);
                             auto message = proto::toMessage(dataJson);
                             if (auto const response = messageHandler_.process(std::move(message));
@@ -94,13 +96,69 @@ private:
 
                 nlohmann::json metricsArray = nlohmann::json::array();
 
-                for (auto&& [k, m] : metrics_) {
+                for (auto &&[k, m] : metrics_) {
                     metricsArray.push_back(m);
                 }
                 response.payload[proto::keys::kMetrics] = metricsArray;
-                auto x = response.payload.dump();
+                response.payload[proto::keys::kVersion] = version_.value.to_string();
+                return response;
+            })
+            .onPushSettings([&](proto::Message &&message) {
+                proto::metrics_umap_t clientMetrics;
+                for (auto &&m : message.payload[proto::keys::kMetrics]) {
+                    proto::Metric metric = m;
+                    clientMetrics.emplace(std::make_pair(metric.name, std::move(metric)));
+                }
+                std::string error;
+                auto const missingMetrics =
+                    findMissingMetrics<std::string, proto::Metric>(clientMetrics);
+
+                if (!missingMetrics.empty()) {
+                    error = "Missing metrics: ";
+
+                    for (auto &&[m, _] : missingMetrics) {
+                        error += m + " ";
+                    }
+                }
+                semver::version const clientVersion{
+                    message.payload[proto::keys::kVersion].get<std::string>()};
+
+                if (clientVersion < version_.value) {
+                    error += std::string{
+                        std::format("| Deprecated version. Your version ({}), the server ({})",
+                                    clientVersion.to_string(), version_.value.to_string())};
+                }
+                proto::Message response{.type =proto::MessageType::Accepted };
+
+                if (!error.empty()) {
+                    response.type = proto::MessageType::Deprecated;
+                    nlohmann::json payload = {};
+                    payload[proto::keys::kVersion] = version_.value.to_string();
+                    payload[proto::keys::kError] = error;
+                    response.payload = payload;
+                }
                 return response;
             });
+    }
+
+    template <typename K, typename V> struct NotFoundInMapPred {
+        using map_t = std::unordered_map<K, V>;
+        map_t const &map;
+
+        explicit NotFoundInMapPred(map_t const &other) : map{other} {}
+
+        bool operator()(std::pair<K, V> const &element) const {
+            return map.find(element.first) == map.end();
+        }
+    };
+
+    template <typename K, typename V>
+    std::vector<std::pair<K, V>> findMissingMetrics(proto::metrics_umap_t const &clientMetrics) {
+        std::vector<std::pair<K, V>> diff;
+
+        std::copy_if(metrics_.begin(), metrics_.end(), std::back_inserter(diff),
+                     NotFoundInMapPred<K, V>(clientMetrics));
+        return diff;
     }
 
     void runCLI(std::stop_token stopToken, std::latch &workersLatch) {
@@ -150,14 +208,13 @@ private:
         webServerThr_.join();
     }
 
-    /**
-     * Simulate changes in Metrics for the current server version
-     */
     void initMetrics() {
         metrics_ = proto::kMetricsDefault;
 
-        metrics_.insert({ "error",
-            {.name = "error", .description = "Latest error", .type = proto::MetricType::String}});
+        // Simulate changes in Metrics for the current server version
+        metrics_.insert(
+            {"os_name",
+             {.name = "os_name", .description = "Operational system name", .type = proto::MetricType::String}});
     }
 
     proto::Version version_;
