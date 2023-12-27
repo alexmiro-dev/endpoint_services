@@ -57,13 +57,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(magic_enum)
 
 add_library(common INTERFACE
-        include/nt_common/definitions.hpp
-        include/nt_common/Protocol.hpp
+        include/eps_common/definitions.hpp
+        include/eps_common/Protocol.hpp
 )
 
-add_library(nt::common ALIAS common)
+add_library(eps::common ALIAS common)
 
-set_property(TARGET common PROPERTY EXPORT_NAME nt_common)
+set_property(TARGET common PROPERTY EXPORT_NAME eps_common)
 
 target_include_directories(
         common

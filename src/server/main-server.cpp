@@ -4,7 +4,7 @@
 #include <cstdlib>
 
 int main() {
-    nt::Server server{nt::defs::ws::kPort};
+    eps::Server server{eps::defs::ws::kPort};
 
     server.run();
 

@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace nt::defs {
+namespace eps::defs {
 
 static constexpr std::string kInitialServerVersion = "0.1.5";
 static constexpr std::string kInitialClientVersion = "0.1.0";
@@ -14,4 +14,4 @@ namespace ws {
     static constexpr std::string kServerPem = "server.pem";
 }
 
-} // namespace nt::defs
+} // namespace eps::defs

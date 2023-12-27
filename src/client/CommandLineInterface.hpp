@@ -8,7 +8,7 @@
 #include <sstream>
 #include <vector>
 
-namespace nt {
+namespace eps {
 
 using action_func_t = std::function<void()>;
 
@@ -66,4 +66,4 @@ private:
     std::string port_;
 };
 
-} // namespace nt
+} // namespace eps

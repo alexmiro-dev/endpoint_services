@@ -31,7 +31,7 @@ void loadRootCertificate(boost::asio::ssl::context &ctx, fs::path const &certifi
 }
 
 int main() {
-    fs::path const sslServerCertificate = fs::current_path() / nt::defs::ws::kServerCertificate;
+    fs::path const sslServerCertificate = fs::current_path() / eps::defs::ws::kServerCertificate;
 
     boost::asio::io_context ioContext;
     boost::asio::ssl::context sslContext{ssl::context::sslv23};
@@ -43,7 +43,7 @@ int main() {
         std::cerr << "FATAL: cannot start the client: " << ex.what() << std::endl;
         return EXIT_FAILURE;
     }
-    std::make_shared<nt::Client>(ioContext, sslContext)->run("localhost", nt::defs::ws::kPort);
+    std::make_shared<eps::Client>(ioContext, sslContext)->run("localhost", eps::defs::ws::kPort);
 
     // Run the I/O service. The call will return when the socket is closed.
     ioContext.run();

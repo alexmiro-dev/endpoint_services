@@ -1,7 +1,7 @@
 
 #include "CommandLineInterface.hpp"
-#include "nt_common/Protocol.hpp"
-#include "nt_common/definitions.hpp"
+#include "eps_common/Protocol.hpp"
+#include "eps_common/definitions.hpp"
 
 #include <boost/asio/strand.hpp>
 #include <boost/beast/core.hpp>
@@ -27,7 +27,7 @@ namespace ssl = boost::asio::ssl;       // from <boost/asio/ssl.hpp>
 namespace fs = std::filesystem;
 using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
 
-namespace nt {
+namespace eps {
 
 // Report a failure
 void fail(beast::error_code ec, char const *what) {
@@ -225,4 +225,4 @@ private:
     int port_;
 };
 
-} // namespace nt
+} // namespace eps

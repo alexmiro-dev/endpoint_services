@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(interview_nexthink_DEZ23)
+project(eps-proj)
 
 #================================================================================
 # Preamble

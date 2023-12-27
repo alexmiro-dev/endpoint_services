@@ -10,7 +10,7 @@
 #include <optional>
 #include <unordered_map>
 
-namespace nt::proto {
+namespace eps::proto {
 
 //--------------------------------------------------------------------------------
 // Type definitions
@@ -180,4 +180,4 @@ public:
     std::unordered_map<MessageType, handle_func_t> handlers_;
 };
 
-} // namespace nt::proto
+} // namespace eps::proto

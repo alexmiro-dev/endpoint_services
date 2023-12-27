@@ -1,6 +1,6 @@
 
-#include "nt_common/Protocol.hpp"
-#include "nt_common/definitions.hpp"
+#include "eps_common/Protocol.hpp"
+#include "eps_common/definitions.hpp"
 
 #include <crow.h>
 
@@ -14,7 +14,7 @@
 #include <thread>
 #include <unordered_set>
 
-namespace nt {
+namespace eps {
 
 class Server {
 public:
@@ -229,4 +229,4 @@ private:
     proto::metrics_umap_t metrics_;
 };
 
-} // namespace nt
+} // namespace eps
