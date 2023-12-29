@@ -43,11 +43,6 @@ void fail(beast::error_code ec, char const *what) {
  */
 class Client : public std::enable_shared_from_this<Client> {
 public:
-    /**
-     *
-     * @param ioc
-     * @param ioc
-     */
     explicit Client(net::io_context &ioc, ssl::context &ctx)
         : version_{semver::version{defs::kInitialClientVersion}}
         , resolver_{net::make_strand(ioc)}
@@ -129,15 +124,6 @@ private:
         beast::flat_buffer b;
 
         while (!stopToken.stop_requested()) {
-            /*
-            auto const title = std::string{std::format("[MENU] Client (v{}) connected to {}:{}",
-                                                 version_.value.to_string(), host_, strPort)};
-
-            if (!cmdLineIface_.tryToExecuteAction(title)) {
-                // User has chosen to quit the application.
-                break;
-            }
-             */
             ws_.read(b);
             try {
                 nlohmann::json const dataJson =
