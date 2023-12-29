@@ -33,3 +33,13 @@ sudo ./b2 link=static install
 
 Enter your choice (0 to disconnect and quit):
 ```
+
+### Updating the server version
+By default, the server starts with a version greater than the clients (v1.0.5), however it could 
+be upgraded to version v0.1.6 which will be broadcast the message to the clients.
+```
+[MENU] Server (v0.1.5) port: 8008
+   1. Update to version 0.1.6 and notify clients
+
+Enter your choice (0 to disconnect and quit): 1
+```
