@@ -1,5 +1,5 @@
 
-#include "CommandLineInterface.hpp"
+#include "eps_common/CommandLineInterface.hpp"
 #include "eps_common/Protocol.hpp"
 #include "eps_common/definitions.hpp"
 
@@ -18,6 +18,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <latch>
 
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
@@ -118,20 +119,25 @@ private:
         if (ec) {
             return fail(ec, "handshake");
         }
+        std::latch workersLatch{1U};
+        cmdLineIfaceThr_ = std::jthread([&](std::stop_token stopToken) { runCLI(stopToken, workersLatch); });
         wsInteractionThr_ = std::jthread([&](std::stop_token stopToken) { mainLoop(stopToken); });
-        wsInteractionThr_.join();
+        workersLatch.wait();
     }
 
     void mainLoop(std::stop_token stopToken) {
         beast::flat_buffer b;
 
-        auto const strPort = std::to_string(port_);
-
         while (!stopToken.stop_requested()) {
-            if (!cmdLineIface_.tryToExecuteAction(version_.value.to_string(), host_, strPort)) {
+            /*
+            auto const title = std::string{std::format("[MENU] Client (v{}) connected to {}:{}",
+                                                 version_.value.to_string(), host_, strPort)};
+
+            if (!cmdLineIface_.tryToExecuteAction(title)) {
                 // User has chosen to quit the application.
                 break;
             }
+             */
             ws_.read(b);
             try {
                 nlohmann::json const dataJson =
@@ -149,13 +155,27 @@ private:
         }
     }
 
-    void init() {
+    void runCLI(std::stop_token stopToken, std::latch &workersLatch) {
+        std::string const strPort = std::to_string(port_);
         cmdLineIface_
             .option(
                 {.label = "Check the server version", .action = [&] { requestServerVersion(); }})
             .option({.label = "Get updates", .action = [&] { requestUpdates(); }})
             .option({.label = "Push settings changes", .action = [&] { requestPushSettings(); }});
 
+        while (!stopToken.stop_requested()) {
+            auto const title = std::string{std::format("[MENU] Client (v{}) connected to {}:{}",
+                                                       version_.value.to_string(), host_, strPort)};
+
+            if (!cmdLineIface_.tryToExecuteAction(title)) {
+                std::cout << "\n\nShutdown has been requested, bye!\n\n";
+                break;
+            }
+        }
+        workersLatch.count_down();
+    }
+
+    void init() {
         messageHandler_
             .onVersionUpdatesAvailable([&](proto::Message &&message) {
                 auto const strVersion = message.payload[proto::keys::kVersion].get<std::string>();
@@ -220,6 +240,7 @@ private:
     proto::MessageHandler messageHandler_;
     CommandLineInterface cmdLineIface_;
     std::jthread wsInteractionThr_;
+    std::jthread cmdLineIfaceThr_;
     proto::metrics_umap_t metrics_ = proto::kMetricsDefault;
     std::string host_;
     int port_;

@@ -59,6 +59,7 @@ FetchContent_MakeAvailable(magic_enum)
 add_library(common INTERFACE
         include/eps_common/definitions.hpp
         include/eps_common/Protocol.hpp
+        include/eps_common/CommandLineInterface.hpp
 )
 
 add_library(eps::common ALIAS common)

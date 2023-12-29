@@ -6,6 +6,7 @@ namespace eps::defs {
 
 static constexpr std::string kInitialServerVersion = "0.1.5";
 static constexpr std::string kInitialClientVersion = "0.1.0";
+static constexpr std::string kServerNewVersion = "0.1.6";
 
 namespace ws {
     static constexpr int kPort = 8'008;

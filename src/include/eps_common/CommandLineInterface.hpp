@@ -27,13 +27,11 @@ public:
         return *this;
     }
 
-    bool tryToExecuteAction(std::string_view version, std::string_view host, std::string_view port) const {
+    bool tryToExecuteAction(std::string_view title) const {
         std::string choiceStr;
 
         while (true) {
-            std::cout << std::string{std::format("\n\n[MENU] Client (v{}) connected to {}:{}\n",
-                                                 version, host, port)}
-                      << std::flush;
+            std::cout << "\n\n" << title << "\n";
 
             for (auto i = 0; i < options_.size(); ++i) {
                 std::cout << std::format("   {}. {}", i + 1, options_[i].label) << "\n";
@@ -62,8 +60,6 @@ public:
 
 private:
     std::vector<Option> options_;
-    std::string host_;
-    std::string port_;
 };
 
 } // namespace eps

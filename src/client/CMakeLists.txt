@@ -6,7 +6,7 @@ link_directories(${Boost_LIBRARY_DIRS})
 add_executable(eps-client
         main-client.cpp
         Client.hpp
-        CommandLineInterface.hpp)
+        ../include/eps_common/CommandLineInterface.hpp)
 target_compile_definitions(eps-client PRIVATE CROW_ENABLE_SSL)
 target_include_directories(eps-client PRIVATE ${OPENSSL_INCLUDE_DIRS})
 target_link_libraries(eps-client PRIVATE

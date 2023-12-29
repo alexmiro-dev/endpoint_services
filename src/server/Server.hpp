@@ -1,6 +1,7 @@
 
 #include "eps_common/Protocol.hpp"
 #include "eps_common/definitions.hpp"
+#include "eps_common/CommandLineInterface.hpp"
 
 #include <crow.h>
 
@@ -22,18 +23,19 @@ public:
         : version_{semver::version{defs::kInitialServerVersion}}, port_{port} {
         initMetrics();
         initMessageHandler();
+        app_.loglevel(crow::LogLevel::Warning);
 
         CROW_ROUTE(app_, "/ws")
             .websocket()
             .onopen([&](crow::websocket::connection &conn) {
                 CROW_LOG_INFO << "new websocket connection from " << conn.get_remote_ip();
                 std::lock_guard<std::mutex> _{connectionsMtx_};
-                users.insert(&conn);
+                users_.insert(&conn);
             })
             .onclose([&](crow::websocket::connection &conn, const std::string &reason) {
                 CROW_LOG_INFO << "websocket connection closed: " << reason;
                 std::lock_guard<std::mutex> _{connectionsMtx_};
-                users.erase(&conn);
+                users_.erase(&conn);
             })
             .onmessage(
                 [&](crow::websocket::connection &conn, const std::string &data, bool isBinary) {
@@ -62,7 +64,7 @@ public:
 
     void run() {
         std::latch workersLatch{2U};
-        cmdLineInterfaceThr_ = std::jthread([&](std::stop_token st) { runCLI(st, workersLatch); });
+        cmdLineIfaceThr_ = std::jthread([&](std::stop_token st) { runCLI(st, workersLatch); });
         webServerThr_ = std::jthread([&](std::stop_token st) { runWebService(st, workersLatch); });
         workersLatch.wait();
     }
@@ -162,19 +164,23 @@ private:
     }
 
     void runCLI(std::stop_token stopToken, std::latch &workersLatch) {
-        constexpr auto prompt = "\nEnter a command ('quit' to shutdown the server): ";
-        std::string userInput;
+        std::string const strPort = std::to_string(port_);
+        cmdLineIface_
+            .option(
+                {.label = std::format("Update to version {} and notify clients", defs::kServerNewVersion),
+                 .action = [&] {
+                     updateVersion();
+                     notifyNewVersion();
+                 }});
 
         while (!stopToken.stop_requested()) {
-            std::cout << prompt;
-            std::getline(std::cin, userInput);
+            auto const title = std::string{std::format("[MENU] Server (v{}) port: {}",
+                                                       version_.value.to_string(), strPort)};
 
-            if ("quit" == userInput) {
+            if (!cmdLineIface_.tryToExecuteAction(title)) {
                 std::cout << "\n\nShutdown has been requested, bye!\n\n";
                 quitLock_.test_and_set(std::memory_order_acquire);
                 break;
-            } else {
-                std::cout << "\t<Error> Invalid command!\n";
             }
         }
         workersLatch.count_down();
@@ -191,9 +197,8 @@ private:
             app_.port(port_).multithreaded().ssl_file(cert.string(), key.string()).run_async();
 
         do {
-            if (auto status = futureApp.wait_for(500ms);
-                status == std::future_status::timeout &&
-                quitLock_.test(std::memory_order_relaxed)) {
+            if (auto status = futureApp.wait_for(500ms); status == std::future_status::timeout &&
+                                                        quitLock_.test(std::memory_order_relaxed)) {
                 workersLatch.count_down();
                 app_.stop();
                 break;
@@ -202,9 +207,9 @@ private:
     }
 
     void shutdown() {
-        cmdLineInterfaceThr_.request_stop();
+        cmdLineIfaceThr_.request_stop();
         webServerThr_.request_stop();
-        cmdLineInterfaceThr_.join();
+        cmdLineIfaceThr_.join();
         webServerThr_.join();
     }
 
@@ -217,16 +222,36 @@ private:
              {.name = "os_name", .description = "Operational system name", .type = proto::MetricType::String}});
     }
 
+    void updateVersion() {
+        version_.value = semver::version{defs::kServerNewVersion};
+        metrics_.insert(
+            {"user_satisfaction",
+             {.name = "user_satisfaction", .description = "The user satisfaction", .type = proto::MetricType::Double}});
+    }
+
+    void notifyNewVersion() {
+        proto::Message message{.type = proto::MessageType::VersionUpdatesAvailable};
+        nlohmann::json payload = {};
+        payload[proto::keys::kVersion] = version_.value.to_string();
+        message.payload = payload;
+        auto const messageStr = proto::toString(message);
+
+        for (auto&& conn : users_) {
+            conn->send_text(messageStr);
+        }
+    }
+
     proto::Version version_;
     int port_{0};
     crow::SimpleApp app_;
-    std::unordered_set<crow::websocket::connection *> users;
-    std::jthread cmdLineInterfaceThr_;
+    std::unordered_set<crow::websocket::connection *> users_;
+    std::jthread cmdLineIfaceThr_;
     std::jthread webServerThr_;
     std::mutex connectionsMtx_;
     std::atomic_flag quitLock_ = ATOMIC_FLAG_INIT;
     proto::MessageHandler messageHandler_;
     proto::metrics_umap_t metrics_;
+    CommandLineInterface cmdLineIface_;
 };
 
 } // namespace eps
