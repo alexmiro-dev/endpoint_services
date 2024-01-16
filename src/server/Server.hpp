@@ -1,7 +1,7 @@
 
+#include "eps_common/CommandLineInterface.hpp"
 #include "eps_common/Protocol.hpp"
 #include "eps_common/definitions.hpp"
-#include "eps_common/CommandLineInterface.hpp"
 
 #include <crow.h>
 
@@ -45,6 +45,7 @@ public:
                             std::cout << "Received: " << data << std::endl;
                             nlohmann::json const dataJson = nlohmann::json::parse(data);
                             auto message = proto::toMessage(dataJson);
+
                             if (auto const response = messageHandler_.process(std::move(message));
                                 response) {
                                 conn.send_text(proto::toString(response.value()));
@@ -73,7 +74,7 @@ private:
     void initMessageHandler() {
         messageHandler_
             .onVersion([&](proto::Message &&message) {
-                proto::Message response;
+                proto::Message response{.type = proto::MessageType::Accepted};
 
                 if (!message.payload.contains(proto::keys::kVersion)) {
                     response.type = proto::MessageType::BadRequest;
@@ -105,6 +106,10 @@ private:
                 response.payload[proto::keys::kVersion] = version_.value.to_string();
                 return response;
             })
+            .onNotSupported([&](proto::Message&& message){
+                proto::Message response{.type = proto::MessageType::BadRequest};
+                return response;
+            })
             .onPushSettings([&](proto::Message &&message) {
                 proto::metrics_umap_t clientMetrics;
                 for (auto &&m : message.payload[proto::keys::kMetrics]) {
@@ -130,7 +135,7 @@ private:
                         std::format("| Deprecated version. Your version ({}), the server ({})",
                                     clientVersion.to_string(), version_.value.to_string())};
                 }
-                proto::Message response{.type =proto::MessageType::Accepted };
+                proto::Message response{.type = proto::MessageType::Accepted};
 
                 if (!error.empty()) {
                     response.type = proto::MessageType::Deprecated;
@@ -165,17 +170,16 @@ private:
 
     void runCLI(std::stop_token stopToken, std::latch &workersLatch) {
         std::string const strPort = std::to_string(port_);
-        cmdLineIface_
-            .option(
-                {.label = std::format("Update to version {} and notify clients", defs::kServerNewVersion),
-                 .action = [&] {
-                     updateVersion();
-                     notifyNewVersion();
-                 }});
+        cmdLineIface_.option({.label = std::format("Update to version {} and notify clients",
+                                                   defs::kServerNewVersion),
+                              .action = [&] {
+                                  updateVersion();
+                                  notifyNewVersion();
+                              }});
 
         while (!stopToken.stop_requested()) {
-            auto const title = std::string{std::format("[MENU] Server (v{}) port: {}",
-                                                       version_.value.to_string(), strPort)};
+            auto const title = std::string{
+                std::format("[MENU] Server (v{}) port: {}", version_.value.to_string(), strPort)};
 
             if (!cmdLineIface_.tryToExecuteAction(title)) {
                 std::cout << "\n\nShutdown has been requested, bye!\n\n";
@@ -197,8 +201,10 @@ private:
             app_.port(port_).multithreaded().ssl_file(cert.string(), key.string()).run_async();
 
         do {
-            if (auto status = futureApp.wait_for(500ms); status == std::future_status::timeout &&
-                                                        quitLock_.test(std::memory_order_relaxed)) {
+            if (auto status = futureApp.wait_for(500ms);
+                status == std::future_status::timeout &&
+                quitLock_.test(std::memory_order_relaxed)) {
+
                 workersLatch.count_down();
                 app_.stop();
                 break;
@@ -217,16 +223,18 @@ private:
         metrics_ = proto::kMetricsDefault;
 
         // Simulate changes in Metrics for the current server version
-        metrics_.insert(
-            {"os_name",
-             {.name = "os_name", .description = "Operational system name", .type = proto::MetricType::String}});
+        metrics_.insert({"os_name",
+                         {.name = "os_name",
+                          .description = "Operational system name",
+                          .type = proto::MetricType::String}});
     }
 
     void updateVersion() {
         version_.value = semver::version{defs::kServerNewVersion};
-        metrics_.insert(
-            {"user_satisfaction",
-             {.name = "user_satisfaction", .description = "The user satisfaction", .type = proto::MetricType::Double}});
+        metrics_.insert({"user_satisfaction",
+                         {.name = "user_satisfaction",
+                          .description = "The user satisfaction",
+                          .type = proto::MetricType::Double}});
     }
 
     void notifyNewVersion() {
@@ -236,7 +244,7 @@ private:
         message.payload = payload;
         auto const messageStr = proto::toString(message);
 
-        for (auto&& conn : users_) {
+        for (auto &&conn : users_) {
             conn->send_text(messageStr);
         }
     }
@@ -253,5 +261,4 @@ private:
     proto::metrics_umap_t metrics_;
     CommandLineInterface cmdLineIface_;
 };
-
 } // namespace eps

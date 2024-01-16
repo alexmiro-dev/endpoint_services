@@ -16,9 +16,9 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <latch>
 #include <memory>
 #include <string>
-#include <latch>
 
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
@@ -115,7 +115,8 @@ private:
             return fail(ec, "handshake");
         }
         std::latch workersLatch{1U};
-        cmdLineIfaceThr_ = std::jthread([&](std::stop_token stopToken) { runCLI(stopToken, workersLatch); });
+        cmdLineIfaceThr_ =
+            std::jthread([&](std::stop_token stopToken) { runCLI(stopToken, workersLatch); });
         wsInteractionThr_ = std::jthread([&](std::stop_token stopToken) { mainLoop(stopToken); });
         workersLatch.wait();
     }
@@ -181,6 +182,10 @@ private:
                     metrics_.emplace(std::make_pair(metric.name, std::move(metric)));
                 }
                 std::cout << "\n\nThe metrics has been updated\n\n";
+                return std::nullopt;
+            })
+            .onBadRequest([&](proto::Message &&message) {
+                std::cout << "\n\nServer said we have sent a bad request.\n\n";
                 return std::nullopt;
             })
             .onDeprecated([&](proto::Message &&message) {
