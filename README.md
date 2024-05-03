@@ -1,7 +1,8 @@
 <h1 align="center">EPS - Endpoint Services</h1>
 
 ## Description
-This is a simple client-server that uses WebSockets over SSL connection.
+This is a simple client-server that uses WebSockets over SSL connection. 
+It was created to test some concepts and libraries, so it should not be used as an implementation reference for serious work.
 
 ## Dependencies
 - Boost.asio
